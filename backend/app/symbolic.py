@@ -1,11 +1,8 @@
-"""Modo formula: el usuario escribe r(t) = x(t) i + y(t) j + z(t) k y SymPy deriva
-de forma exacta r'(t), r''(t), |r'(t)|, T(t) y kappa(t). Sirve para comprobar los
-ejercicios de la guia (por ejemplo 13 y 19-22).
+"""Modo formula: escribimos r(t) y SymPy saca las derivadas exactas.
+Sirve para revisar los ejercicios del taller (ej. 17 al 22 de curvatura).
 """
-from __future__ import annotations
-
 import re
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 
 import numpy as np
 import sympy as sp
@@ -18,77 +15,68 @@ from sympy.parsing.sympy_parser import (
 
 t = sp.Symbol("t", real=True)
 
-FUNCIONES = {
+PERMITIDAS = {
     "sin": sp.sin, "sen": sp.sin, "cos": sp.cos, "tan": sp.tan,
-    "asin": sp.asin, "acos": sp.acos, "atan": sp.atan, "arctan": sp.atan,
-    "sinh": sp.sinh, "senh": sp.sinh, "cosh": sp.cosh, "tanh": sp.tanh,
-    "exp": sp.exp, "ln": sp.log, "log": sp.log, "sqrt": sp.sqrt, "abs": sp.Abs,
+    "sinh": sp.sinh, "senh": sp.sinh, "cosh": sp.cosh, "atan": sp.atan, "arctan": sp.atan,
+    "exp": sp.exp, "ln": sp.log, "log": sp.log, "sqrt": sp.sqrt,
     "pi": sp.pi, "e": sp.E, "t": t,
 }
-_PERMITIDO = re.compile(r"^[0-9a-z+\-*/^()., ]*$")
-_TRANSFORMS = standard_transformations + (implicit_multiplication_application, convert_xor)
-_pool = ThreadPoolExecutor(max_workers=2)
+TRANSFORMACIONES = standard_transformations + (implicit_multiplication_application, convert_xor)
+hilos = ThreadPoolExecutor(max_workers=2)
 
 
-def parse(texto: str, nombre: str) -> sp.Expr:
+def leer(texto, nombre):
     texto = texto.strip().lower()
-    if not texto or len(texto) > 200 or not _PERMITIDO.match(texto):
-        raise ValueError(f"{nombre}(t): usa solo numeros, t, + - * / ^ ( ) y funciones como sin, cos, exp, sqrt.")
+    # solo dejamos numeros, operaciones y las funciones de la lista (por seguridad)
+    if not texto or not re.fullmatch(r"[0-9a-z+\-*/^()., ]+", texto):
+        raise ValueError(f"{nombre}(t) tiene caracteres no permitidos.")
     for palabra in re.findall(r"[a-z]+", texto):
-        if palabra not in FUNCIONES:
-            raise ValueError(f"{nombre}(t): no conozco '{palabra}'. Permitidos: {', '.join(sorted(FUNCIONES))}.")
+        if palabra not in PERMITIDAS:
+            raise ValueError(f"{nombre}(t): no se que es '{palabra}'.")
     try:
-        expr = parse_expr(texto, local_dict=dict(FUNCIONES), transformations=_TRANSFORMS)
-    except Exception as exc:  # noqa: BLE001
-        raise ValueError(f"{nombre}(t): no pude leer la expresion ({exc}).") from exc
-    if expr.free_symbols - {t}:
-        raise ValueError(f"{nombre}(t): la unica variable permitida es t.")
-    return sp.sympify(expr)
+        return sp.sympify(parse_expr(texto, local_dict=dict(PERMITIDAS), transformations=TRANSFORMACIONES))
+    except Exception:
+        raise ValueError(f"No pude leer {nombre}(t), revisa los parentesis.")
 
 
-def _simplificar(expr: sp.Expr, segundos: float = 2.5) -> sp.Expr:
-    futuro = _pool.submit(sp.simplify, expr)
+def simplificar(expr):
+    # a veces simplify se demora mucho, entonces le damos maximo 2.5 segundos
     try:
-        return futuro.result(timeout=segundos)
-    except FutureTimeout:
+        return hilos.submit(sp.simplify, expr).result(timeout=2.5)
+    except TimeoutError:
         return expr
 
 
-def _evaluar(expr: sp.Expr, ts: np.ndarray) -> np.ndarray:
+def evaluar(expr, ts):
     f = sp.lambdify(t, expr, "numpy")
     with np.errstate(all="ignore"):
-        valores = np.asarray(f(ts), dtype=complex)
-    valores = np.broadcast_to(valores, ts.shape)
-    if not np.all(np.isfinite(valores)) or np.any(np.abs(valores.imag) > 1e-9):
-        raise ValueError("La funcion no esta definida en todo el intervalo de t (revisa el dominio).")
+        valores = np.broadcast_to(np.asarray(f(ts), dtype=complex), ts.shape)
+    if not np.all(np.isfinite(valores)) or np.any(abs(valores.imag) > 1e-9):
+        raise ValueError("La funcion no esta definida en todo el intervalo (revisa el dominio).")
     return valores.real.astype(float)
 
 
-def formula_curve(x: str, y: str, z: str, t0: float, t1: float, samples: int):
-    if not t1 > t0:
-        raise ValueError("El intervalo debe cumplir t0 < t1.")
-    r = sp.Matrix([parse(x, "x"), parse(y, "y"), parse(z, "z")])
-    d1 = r.diff(t)
-    d2 = d1.diff(t)
-    rapidez = sp.sqrt(d1.dot(d1))
-    cruz = d1.cross(d2)
-    kappa = sp.sqrt(cruz.dot(cruz)) / rapidez**3
+def formula_curve(x, y, z, t0, t1, samples):
+    if t1 <= t0:
+        raise ValueError("Tiene que ser t0 < t1.")
+    r = sp.Matrix([leer(x, "x"), leer(y, "y"), leer(z, "z")])
+    r1 = r.diff(t)   # velocidad
+    r2 = r1.diff(t)  # aceleracion
+    rapidez = simplificar(sp.sqrt(r1.dot(r1)))
+    cruz = r1.cross(r2)
+    kappa = simplificar(sp.sqrt(cruz.dot(cruz)) / rapidez**3)
 
     ts = np.linspace(t0, t1, samples)
-    R = np.column_stack([_evaluar(c, ts) for c in r])
-    D1 = np.column_stack([_evaluar(c, ts) for c in d1])
-    D2 = np.column_stack([_evaluar(c, ts) for c in d2])
+    R = np.column_stack([evaluar(c, ts) for c in r])
+    R1 = np.column_stack([evaluar(c, ts) for c in r1])
+    R2 = np.column_stack([evaluar(c, ts) for c in r2])
 
-    rapidez_s = _simplificar(rapidez)
-    kappa_s = _simplificar(kappa)
-    T_s = sp.Matrix([_simplificar(c / rapidez_s, 1.0) for c in d1])
-    vec = lambda m: r"\left\langle " + ",\\; ".join(sp.latex(c) for c in m) + r" \right\rangle"  # noqa: E731
+    vec = lambda m: r"\left\langle " + ",\\; ".join(sp.latex(c) for c in m) + r" \right\rangle"
     latex = {
         "r": vec(r),
-        "d1": vec(d1),
-        "d2": vec(d2),
-        "speed": sp.latex(rapidez_s),
-        "T": vec(T_s),
-        "kappa": sp.latex(kappa_s),
+        "d1": vec(r1),
+        "d2": vec(r2),
+        "speed": sp.latex(rapidez),
+        "kappa": sp.latex(kappa),
     }
-    return ts, R, D1, D2, latex
+    return ts, R, R1, R2, latex

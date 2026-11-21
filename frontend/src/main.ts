@@ -3,404 +3,328 @@ import "./style.css";
 import * as THREE from "three";
 import { fetchFormula, fetchTrack } from "./api";
 import { Editor } from "./editor";
-import { computeUps, indexAtS, indexAtTime, v3, valueAt } from "./frames";
+import { computeUps, indexOf, v3 } from "./frames";
 import { Chart, Hud, tex } from "./hud";
 import { renderManual } from "./manual";
-import { DRAW_PRESETS, FORMULA_PRESETS } from "./presets";
-import { Ride, type Visible } from "./ride";
+import { EJERCICIOS, PISTAS } from "./presets";
+import { Ride } from "./ride";
 import { World } from "./scene";
-import { TrackView, type ColorMode } from "./track";
+import { TrackView } from "./track";
 import type { TrackData } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
-const input = (id: string) => $<HTMLInputElement>(id);
+const inp = (id: string) => $<HTMLInputElement>(id);
 
-// ---------- Mundo 3D ----------
 const world = new World($("viewport"));
-const trackView = new TrackView(world.scene);
+const pista = new TrackView(world.scene);
 const ride = new Ride(world);
 const editor = new Editor(world);
-const hud = new Hud($("hud"));
 const chart = new Chart($<HTMLCanvasElement>("chart"));
 
-// ---------- Estado ----------
-let mode: "draw" | "formula" = "draw";
+let modo: "dibujar" | "formula" = "dibujar";
 let data: TrackData | null = null;
+const hud = new Hud($("hud"));
 let ups: THREE.Vector3[] = [];
-let cursor = 0; // indice fraccionario donde esta el carrito
-let playing = true;
-let request = 0;
-let needsFrame = true;
-const vis: Visible = { T: true, N: true, B: false, a: false, circle: true };
-let colorMode: ColorMode = "g";
-let cameraMode: "orbit" | "follow" | "rider" = "orbit";
+let tActual = 0; // el carrito se mueve con el parametro t, como en el taller
+let corriendo = true;
+let redibujar = true;
+let camara: "orbita" | "seguir" = "orbita";
+const ver = { T: true, v: true, a: true };
 
-const physics = () => ({ v0: +input("v0").value, mu: +input("mu").value });
-
-// ---------- Mensajes ----------
-let toastTimer = 0;
-function toast(msg: string, kind: "info" | "error" = "info", ms = 3500) {
+let timerAviso = 0;
+function aviso(msg: string, error = false) {
   const el = $("toast");
   el.textContent = msg;
-  el.className = kind;
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.classList.add("hidden"), ms);
+  el.className = error ? "error" : "";
+  clearTimeout(timerAviso);
+  timerAviso = window.setTimeout(() => el.classList.add("hidden"), error ? 6000 : 3500);
 }
 
-// ---------- Construir la pista (llama a Python) ----------
-let pendingReframe = false; // una peticion nueva puede reemplazar a otra que pedia reencuadrar
+// ---------- pedirle los calculos a Python ----------
+let peticion = 0;
+let encuadrar = false;
 
-async function rebuild(opts: { reframe?: boolean } = {}) {
-  const id = ++request;
-  if (opts.reframe) pendingReframe = true;
+async function calcular(reencuadrar = false) {
+  const id = ++peticion;
+  if (reencuadrar) encuadrar = true;
   try {
     let d: TrackData;
-    if (mode === "draw") {
-      const pts = editor.getPoints();
-      const min = input("closed").checked ? 3 : 2;
-      if (pts.length < min) {
-        trackView.clear();
+    if (modo === "dibujar") {
+      const puntos = editor.getPoints();
+      const minimo = inp("closed").checked ? 3 : 2;
+      if (puntos.length < minimo) {
         data = null;
+        pista.clear();
         ride.hide();
-        $("hud").innerHTML = `<p class="hint">Aquí aparecerán r(t), T, N, B, κ y las fuerzas G cuando la pista tenga suficientes puntos.</p>`;
-        $("summary").innerHTML = `<span class="muted">Agrega al menos ${min} puntos haciendo clic en el suelo.</span>`;
         chart.setData(null);
         chart.draw(0);
+        $("hud").innerHTML = `<p class="hint">Pon al menos ${minimo} puntos para ver los cálculos.</p>`;
+        $("summary").textContent = "";
         return;
       }
-      d = await fetchTrack(pts, input("closed").checked, physics());
+      d = await fetchTrack(puntos, inp("closed").checked);
     } else {
-      d = await fetchFormula(
-        { x: input("fx").value, y: input("fy").value, z: input("fz").value, t0: +input("t0").value, t1: +input("t1").value },
-        physics(),
-      );
+      d = await fetchFormula({ x: inp("fx").value, y: inp("fy").value, z: inp("fz").value, t0: +inp("t0").value, t1: +inp("t1").value });
     }
-    if (id !== request) return; // llego una respuesta mas nueva
-    applyData(d, pendingReframe);
-    pendingReframe = false;
+    if (id !== peticion) return; // ya hay una peticion mas nueva
+    mostrar(d, encuadrar);
+    encuadrar = false;
   } catch (e) {
-    if (id === request) toast((e as Error).message, "error", 6000);
+    if (id === peticion) aviso((e as Error).message, true);
   }
 }
 
-function applyData(d: TrackData, reframe: boolean) {
-  const prevS = data ? valueAt(data.s, cursor) : 0;
+function mostrar(d: TrackData, reencuadrar: boolean) {
+  const fraccion = data ? (tActual - data.summary.t0) / (data.summary.t1 - data.summary.t0) : 0;
   data = d;
   ups = computeUps(d);
 
-  const box = new THREE.Box3();
-  d.pos.forEach((p) => box.expandByPoint(v3(p)));
-  const size = box.getSize(new THREE.Vector3()).length();
-  const gauge = THREE.MathUtils.clamp(size / 55, 0.12, 1.4);
-  const groundZ = mode === "draw" ? 0 : Math.min(box.min.z - gauge * 2, 0);
-  if (reframe || mode === "formula") world.setGround(groundZ, box.getCenter(new THREE.Vector3()), Math.max(size, 20));
+  const caja = new THREE.Box3();
+  d.pos.forEach((p) => caja.expandByPoint(v3(p)));
+  const tam = caja.getSize(new THREE.Vector3()).length();
+  const ancho = THREE.MathUtils.clamp(tam / 55, 0.12, 1.4); // ancho de la via segun el tamano
+  const sueloZ = modo === "dibujar" ? 0 : Math.min(caja.min.z - ancho * 2, 0);
+  if (reencuadrar || modo === "formula") world.setGround(sueloZ, caja.getCenter(new THREE.Vector3()), Math.max(tam, 20));
 
-  trackView.build(d, ups, gauge, groundZ, colorMode);
-  ride.setData(d, ups, gauge, size);
-  ride.cart.visible = true;
+  pista.build(d, ups, ancho, sueloZ);
+  ride.setData(d, ups, ancho);
   chart.setData(d);
-  cursor = Math.min(indexAtS(d, prevS), d.pos.length - 1);
-  if (reframe) {
-    cursor = 0;
-    world.frame(box);
-  }
-  renderSummary(d);
-  renderLatex(d);
-  needsFrame = true;
-  if (d.summary.stallIndex !== null) {
-    toast(`⚠️ El carrito no tiene energía para pasar la colina en s = ${d.s[d.summary.stallIndex].toFixed(1)} m (v² ≤ 0). Sube v₀ o baja esa colina.`, "error", 7000);
-  }
-}
+  const { t0, t1 } = d.summary;
+  tActual = reencuadrar ? t0 : t0 + Math.min(Math.max(fraccion, 0), 1) * (t1 - t0);
+  if (reencuadrar) world.frame(caja);
 
-function renderSummary(d: TrackData) {
   const s = d.summary;
-  const gCls = s.maxG >= 5 ? "bad" : s.maxG >= 3 ? "warn" : "ok";
   $("summary").innerHTML = `
-    <span class="chip"><b>${s.length.toFixed(1)} m</b> de riel</span>
-    <span class="chip">κ máx <b>${s.maxKappa.toFixed(3)}</b></span>
-    <span class="chip">radio mín <b>${s.minRadius !== null ? s.minRadius.toFixed(1) + " m" : "∞"}</b></span>
-    <span class="chip ${gCls}">G máx <b>${s.maxG.toFixed(2)}</b></span>
-    <span class="chip">v máx <b>${(s.maxSpeed * 3.6).toFixed(0)} km/h</b></span>
-    <span class="chip">${s.closed ? "vuelta" : "recorrido"} <b>${s.duration.toFixed(1)} s</b></span>
-    ${s.stallIndex !== null ? `<span class="chip bad">se detiene</span>` : ""}`;
+    <span class="chip">longitud <b>${s.length.toFixed(2)}</b></span>
+    <span class="chip">κ máx <b>${s.maxKappa.toFixed(4)}</b></span>
+    <span class="chip">radio mín <b>${s.minRadius !== null ? s.minRadius.toFixed(2) : "∞"}</b></span>
+    <span class="chip">t ∈ <b>[${t0.toFixed(2)}, ${t1.toFixed(2)}]</b></span>`;
+
+  $("latex").innerHTML = d.latex
+    ? `<p class="muted small">Lo que calculó SymPy:</p>
+      <div class="row">${tex(`\\mathbf r(t) = ${d.latex.r}`)}</div>
+      <div class="row">${tex(`\\mathbf r'(t) = ${d.latex.d1}`)}</div>
+      <div class="row">${tex(`\\mathbf r''(t) = ${d.latex.d2}`)}</div>
+      <div class="row">${tex(`|\\mathbf r'(t)| = ${d.latex.speed}`)}</div>
+      <div class="row">${tex(`\\kappa(t) = ${d.latex.kappa}`)}</div>
+      <div class="row">${tex(`L = \\int_{${t0.toFixed(2)}}^{${t1.toFixed(2)}} |\\mathbf r'(t)|\\,dt \\approx ${s.length.toFixed(3)}`)}</div>`
+    : "";
+  redibujar = true;
 }
 
-function renderLatex(d: TrackData) {
-  const box = $("latex");
-  if (!d.latex) {
-    box.innerHTML = "";
-    return;
-  }
-  const L = d.latex;
-  box.innerHTML = `
-    <p class="muted small">Calculado de forma exacta por SymPy:</p>
-    <div class="row">${tex(`\\mathbf r(t) = ${L.r}`)}</div>
-    <div class="row">${tex(`\\mathbf r'(t) = ${L.d1}`)}</div>
-    <div class="row">${tex(`\\mathbf r''(t) = ${L.d2}`)}</div>
-    <div class="row">${tex(`|\\mathbf r'(t)| = ${L.speed}`)}</div>
-    <div class="row">${tex(`\\mathbf T(t) = ${L.T}`)}</div>
-    <div class="row">${tex(`\\kappa(t) = ${L.kappa}`)}</div>
-    <div class="row">${tex(`L = \\int_{t_0}^{t_1} |\\mathbf r'(t)|\\,dt \\approx ${d.summary.length.toFixed(3)}`)}</div>`;
-}
-
-// ---------- Bucle de animacion ----------
+// ---------- animacion ----------
 world.onFrame((dt) => {
   if (!data) return;
-  const d = data;
-  const n = d.pos.length;
-  if (playing) {
-    const total = d.time[n - 1];
-    let time = valueAt(d.time, cursor) + dt * +input("speed").value;
-    const stall = d.summary.stallIndex;
-    if (stall !== null && cursor >= stall - 1e-6) {
-      playing = false;
-      updatePlayButton();
-    } else if (time >= total) {
-      if (d.summary.closed) time -= total;
+  const { t0, t1, closed } = data.summary;
+  if (corriendo) {
+    tActual += dt * ((t1 - t0) / 20) * +inp("speed").value; // una vuelta dura ~20 s a velocidad 1
+    if (tActual >= t1) {
+      if (closed) tActual = t0 + (tActual - t1);
       else {
-        time = total;
-        playing = false;
-        updatePlayButton();
+        tActual = t1;
+        corriendo = false;
+        botonPlay();
       }
     }
-    cursor = indexAtTime(d, time);
-    needsFrame = true;
+    redibujar = true;
   }
-  if (!needsFrame && cameraMode === "orbit") return;
-  needsFrame = false;
+  if (!redibujar && camara === "orbita") return;
+  redibujar = false;
 
-  const st = ride.stateAt(cursor);
-  ride.update(st, vis);
+  const st = ride.stateAt(indexOf(data.t, tActual));
+  ride.update(st, ver);
   hud.update(st);
-  chart.draw(st.s);
+  chart.draw(tActual);
 
-  if (cameraMode !== "orbit") {
+  if (camara === "seguir") {
     const p = v3(st.pos);
-    const T = v3(st.T);
-    const up = v3(st.up);
-    const g = ride.gauge;
-    if (cameraMode === "rider") {
-      world.camera.up.copy(up);
-      world.camera.position.copy(p).addScaledVector(up, g * 1.6).addScaledVector(T, g * 0.2);
-      world.camera.lookAt(p.clone().addScaledVector(T, g * 12).addScaledVector(up, g * 1.0));
-    } else {
-      world.camera.up.set(0, 0, 1);
-      const target = p.clone().addScaledVector(T, -g * 11).add(new THREE.Vector3(0, 0, g * 6));
-      world.camera.position.lerp(target, 1 - Math.exp(-dt * 4));
-      world.camera.lookAt(p);
-    }
+    const g = ride.ancho;
+    const atras = p.clone().addScaledVector(v3(st.T), -g * 11).add(new THREE.Vector3(0, 0, g * 6));
+    world.camera.position.lerp(atras, 1 - Math.exp(-dt * 4));
+    world.camera.lookAt(p);
   }
 });
 
-// ---------- Controles ----------
-function updatePlayButton() {
-  $("btn-play").textContent = playing ? "❚❚" : "▶";
+// ---------- botones ----------
+function botonPlay() {
+  $("btn-play").textContent = corriendo ? "❚❚" : "▶";
 }
-function togglePlay() {
+function playPausa() {
   if (!data) return;
-  const n = data.pos.length;
-  const stall = data.summary.stallIndex;
-  if (!playing && (cursor >= n - 1.001 || (stall !== null && cursor >= stall - 1e-6))) cursor = 0;
-  playing = !playing;
-  updatePlayButton();
+  if (!corriendo && tActual >= data.summary.t1 - 1e-9) tActual = data.summary.t0;
+  corriendo = !corriendo;
+  botonPlay();
 }
-$("btn-play").addEventListener("click", togglePlay);
+$("btn-play").addEventListener("click", playPausa);
 $("btn-restart").addEventListener("click", () => {
-  cursor = 0;
-  playing = true;
-  needsFrame = true;
-  updatePlayButton();
-});
-chart.onSeek = (s) => {
   if (!data) return;
-  cursor = indexAtS(data, s);
-  playing = false;
-  needsFrame = true;
-  updatePlayButton();
+  tActual = data.summary.t0;
+  corriendo = true;
+  redibujar = true;
+  botonPlay();
+});
+chart.onSeek = (t) => {
+  tActual = t;
+  corriendo = false;
+  redibujar = true;
+  botonPlay();
 };
 
-// Pestanas
+// pestañas
 document.querySelectorAll<HTMLButtonElement>(".tab").forEach((tab) =>
   tab.addEventListener("click", () => {
-    const next = tab.dataset.tab as "draw" | "formula";
-    if (next === mode) return;
-    mode = next;
+    const nuevo = tab.dataset.tab as typeof modo;
+    if (nuevo === modo) return;
+    modo = nuevo;
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t === tab));
-    document.querySelectorAll<HTMLElement>(".tab-body").forEach((b) => b.classList.toggle("hidden", b.dataset.body !== mode));
-    editor.setEnabled(mode === "draw");
-    if (mode === "formula") loadFormulaPreset($<HTMLSelectElement>("formula-preset").value);
-    else rebuild({ reframe: true });
+    document.querySelectorAll<HTMLElement>(".tab-body").forEach((b) => b.classList.toggle("hidden", b.dataset.body !== modo));
+    editor.setEnabled(modo === "dibujar");
+    if (modo === "formula") cargarEjercicio(selEj.value);
+    else {
+      $("latex").innerHTML = "";
+      calcular(true);
+    }
   }),
 );
 
-// Presets de dibujo
-const drawSel = $<HTMLSelectElement>("draw-preset");
-for (const [k, p] of Object.entries(DRAW_PRESETS)) drawSel.add(new Option(p.label, k));
-drawSel.add(new Option("— pista en blanco —", "blank"));
-function loadDrawPreset(key: string) {
-  if (key === "blank") {
+// pistas de ejemplo
+const selPista = $<HTMLSelectElement>("draw-preset");
+for (const [k, p] of Object.entries(PISTAS)) selPista.add(new Option(p.nombre, k));
+selPista.add(new Option("— en blanco —", "blanco"));
+function cargarPista(k: string) {
+  if (k === "blanco") {
     editor.clear();
-    trackView.clear();
-    rebuild();
+    calcular();
     return;
   }
-  const p = DRAW_PRESETS[key];
-  input("closed").checked = p.closed;
-  editor.setClosed(p.closed);
-  setRange("v0", p.v0);
-  editor.setPoints(p.points);
-  playing = true;
-  updatePlayButton();
-  rebuild({ reframe: true });
+  inp("closed").checked = PISTAS[k].cerrada;
+  editor.setClosed(PISTAS[k].cerrada);
+  editor.setPoints(PISTAS[k].puntos);
+  corriendo = true;
+  botonPlay();
+  calcular(true);
 }
-drawSel.addEventListener("change", () => loadDrawPreset(drawSel.value));
+selPista.addEventListener("change", () => cargarPista(selPista.value));
 
-// Presets de formula
-const fSel = $<HTMLSelectElement>("formula-preset");
-for (const [k, p] of Object.entries(FORMULA_PRESETS)) fSel.add(new Option(p.label, k));
-function loadFormulaPreset(key: string) {
-  const p = FORMULA_PRESETS[key];
-  input("fx").value = p.x;
-  input("fy").value = p.y;
-  input("fz").value = p.z;
-  input("t0").value = String(p.t0);
-  input("t1").value = String(p.t1);
-  setRange("v0", p.v0);
-  playing = true;
-  updatePlayButton();
-  rebuild({ reframe: true });
+// ejercicios del taller
+const selEj = $<HTMLSelectElement>("formula-preset");
+for (const [k, e] of Object.entries(EJERCICIOS)) selEj.add(new Option(e.nombre, k));
+function cargarEjercicio(k: string) {
+  const e = EJERCICIOS[k];
+  inp("fx").value = e.x;
+  inp("fy").value = e.y;
+  inp("fz").value = e.z;
+  inp("t0").value = String(e.t0);
+  inp("t1").value = String(e.t1);
+  corriendo = true;
+  botonPlay();
+  calcular(true);
 }
-fSel.addEventListener("change", () => loadFormulaPreset(fSel.value));
-$("btn-formula").addEventListener("click", () => rebuild({ reframe: true }));
-["fx", "fy", "fz", "t0", "t1"].forEach((id) =>
-  input(id).addEventListener("keydown", (e) => {
-    if (e.key === "Enter") rebuild({ reframe: true });
-  }),
-);
+selEj.addEventListener("change", () => cargarEjercicio(selEj.value));
+$("btn-formula").addEventListener("click", () => calcular(true));
+["fx", "fy", "fz", "t0", "t1"].forEach((id) => inp(id).addEventListener("keydown", (e) => e.key === "Enter" && calcular(true)));
 
-// Editor
-let liveTimer = 0;
+// editor
+let timerEditor = 0;
 editor.onChange = (final) => {
-  clearTimeout(liveTimer);
-  liveTimer = window.setTimeout(() => rebuild(), final ? 0 : 90);
+  clearTimeout(timerEditor);
+  timerEditor = window.setTimeout(() => calcular(), final ? 0 : 90);
 };
-input("closed").addEventListener("change", () => {
-  editor.setClosed(input("closed").checked);
-  rebuild();
+inp("closed").addEventListener("change", () => {
+  editor.setClosed(inp("closed").checked);
+  calcular();
 });
 $("btn-delete").addEventListener("click", () => editor.removeSelected());
 $("btn-clear").addEventListener("click", () => {
-  drawSel.value = "blank";
-  loadDrawPreset("blank");
-  toast("Haz clic en el suelo para poner el primer punto.");
+  selPista.value = "blanco";
+  cargarPista("blanco");
+  aviso("Haz clic en el suelo para poner el primer punto.");
 });
 
-// Fisica
-function setRange(id: string, value: number) {
-  input(id).value = String(value);
-  input(id).dispatchEvent(new Event("input"));
-}
-const labels: Record<string, (v: number) => string> = {
-  v0: (v) => `${v} m/s`,
-  mu: (v) => v.toFixed(3),
-  speed: (v) => `${v}×`,
-  height: (v) => `${v} m`,
+// slider de altura: cambia el punto seleccionado (y la altura de los puntos nuevos)
+inp("height").addEventListener("input", () => {
+  const z = +inp("height").value;
+  editor.height = z;
+  editor.setSelectedHeight(z);
+  $("height-val").textContent = `${z} m`;
+});
+editor.onSelect = (p) => {
+  $("height-label").textContent = p ? `Altura de P${p.indice + 1}:` : "Altura del siguiente punto:";
+  if (p) {
+    const z = Math.round(p.z);
+    inp("height").value = String(z);
+    editor.height = z;
+    $("height-val").textContent = `${z} m`;
+  }
 };
-for (const id of Object.keys(labels)) {
-  input(id).addEventListener("input", () => {
-    $(`${id}-val`).textContent = labels[id](+input(id).value);
-    if (id === "height") editor.height = +input(id).value;
-  });
-}
-let physTimer = 0;
-["v0", "mu"].forEach((id) =>
-  input(id).addEventListener("input", () => {
-    clearTimeout(physTimer);
-    physTimer = window.setTimeout(() => rebuild(), 120);
-  }),
-);
+inp("speed").addEventListener("input", () => ($("speed-val").textContent = `${inp("speed").value}×`));
 
-// Ir a t = t1 (para comprobar ejercicios)
-function parseT(text: string): number {
-  const clean = text.toLowerCase().replace(/\s+/g, "").replace(/π/g, "pi");
-  if (!clean || !/^(pi|ln|sqrt|[0-9.+\-*/()])+$/.test(clean)) throw new Error("valor de t no valido");
-  const js = clean.replace(/pi/g, `(${Math.PI})`).replace(/ln/g, "Math.log").replace(/sqrt/g, "Math.sqrt");
+// "ir a t = ..." para revisar un ejercicio en t1
+function leerT(texto: string): number {
+  const limpio = texto.toLowerCase().replace(/\s+/g, "").replace(/π/g, "pi");
+  if (!/^(pi|ln|sqrt|[0-9.+\-*/()])+$/.test(limpio)) throw new Error();
+  const js = limpio.replace(/pi/g, `(${Math.PI})`).replace(/ln/g, "Math.log").replace(/sqrt/g, "Math.sqrt");
   const v = Function(`"use strict"; return (${js});`)() as number;
-  if (!isFinite(v)) throw new Error("valor de t no valido");
+  if (!isFinite(v)) throw new Error();
   return v;
 }
 $("btn-goto").addEventListener("click", () => {
   if (!data) return;
-  let target: number;
+  let t: number;
   try {
-    target = parseT(input("goto-t").value);
+    t = leerT(inp("goto-t").value);
   } catch {
-    toast("Escribe t como numero, pi, pi/4, ln(2)...", "error");
+    aviso("Escribe t como número, pi, pi/4, ln(2)...", true);
     return;
   }
-  const t = data.t;
-  for (let i = 0; i < t.length - 1; i++) {
-    if (t[i + 1] > t[i] && (t[i] - target) * (t[i + 1] - target) <= 0) {
-      cursor = i + (target - t[i]) / (t[i + 1] - t[i]);
-      playing = false;
-      needsFrame = true;
-      updatePlayButton();
-      toast(`Carrito en t = ${target.toFixed(4)}: compara el panel derecho con tu calculo a mano.`);
-      return;
-    }
+  if (t < data.summary.t0 || t > data.summary.t1) {
+    aviso(`t = ${t.toFixed(3)} está fuera del intervalo de la curva.`, true);
+    return;
   }
-  toast(`t = ${target.toFixed(3)} esta fuera del intervalo de la curva.`, "error");
+  tActual = t;
+  corriendo = false;
+  redibujar = true;
+  botonPlay();
+  aviso(`Carrito en t = ${t.toFixed(4)}. Compara con lo que hiciste a mano.`);
 });
 
-// Vista
+// que flechas se ven
 document.querySelectorAll<HTMLInputElement>("[data-vis]").forEach((cb) =>
   cb.addEventListener("change", () => {
-    vis[cb.dataset.vis as keyof Visible] = cb.checked;
-    needsFrame = true;
+    ver[cb.dataset.vis as keyof typeof ver] = cb.checked;
+    redibujar = true;
   }),
 );
-$<HTMLSelectElement>("color-mode").addEventListener("change", (e) => {
-  colorMode = (e.target as HTMLSelectElement).value as ColorMode;
-  trackView.recolor(colorMode);
-});
 $<HTMLSelectElement>("camera-mode").addEventListener("change", (e) => {
-  cameraMode = (e.target as HTMLSelectElement).value as typeof cameraMode;
-  world.controls.enabled = cameraMode === "orbit";
-  world.camera.up.set(0, 0, 1);
-  if (cameraMode === "orbit" && data) {
-    const box = new THREE.Box3();
-    data.pos.forEach((p) => box.expandByPoint(v3(p)));
-    world.frame(box);
+  camara = (e.target as HTMLSelectElement).value as typeof camara;
+  world.controls.enabled = camara === "orbita";
+  if (camara === "orbita" && data) {
+    const caja = new THREE.Box3();
+    data.pos.forEach((p) => caja.expandByPoint(v3(p)));
+    world.frame(caja);
   }
-  needsFrame = true;
+  redibujar = true;
 });
 
-// Teclado
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement).tagName;
-  if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+  if (tag === "INPUT" || tag === "SELECT") return;
   if (e.key === "Delete" || e.key === "Backspace") editor.removeSelected();
   else if (e.key === "Escape") editor.select(null);
   else if (e.key === " ") {
     e.preventDefault();
-    togglePlay();
+    playPausa();
   }
 });
 
-// Manual
-const dialog = $<HTMLDialogElement>("manual");
+// manual
+const dialogo = $<HTMLDialogElement>("manual");
 $("btn-manual").addEventListener("click", () => {
-  const body = $("manual-body");
-  if (!body.innerHTML) body.innerHTML = renderManual();
-  dialog.showModal();
+  if (!$("manual-body").innerHTML) $("manual-body").innerHTML = renderManual();
+  dialogo.showModal();
 });
-$("btn-close-manual").addEventListener("click", () => dialog.close());
-dialog.addEventListener("click", (e) => {
-  if (e.target === dialog) dialog.close();
-});
+$("btn-close-manual").addEventListener("click", () => dialogo.close());
+dialogo.addEventListener("click", (e) => e.target === dialogo && dialogo.close());
 
-if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__app = { world, editor, getData: () => data };
-
-// ---------- Inicio ----------
-updatePlayButton();
-loadDrawPreset("clasica");
+botonPlay();
+cargarPista("clasica");

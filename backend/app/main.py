@@ -1,118 +1,81 @@
-"""API de la Montana Rusa Vectorial.
+"""API del proyecto. El navegador manda la pista y Python devuelve los calculos.
 
-POST /api/track    -> pista dibujada (puntos de control -> spline cubico)
-POST /api/formula  -> pista escrita como r(t) (SymPy deriva exacto)
-Ambas devuelven, para cada muestra: r, r', r'', T, N, B, kappa, s, rapidez fisica,
-a_T, a_N, fuerza G y tiempo.
+POST /api/track    -> pista dibujada con puntos
+POST /api/formula  -> pista escrita como r(t) = x(t) i + y(t) j + z(t) k
 """
-from __future__ import annotations
-
 from pathlib import Path
 
 import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from .geometry import arc_length, frenet
-from .physics import simulate
+from .geometry import angulo_entre, longitud_acumulada, tangente_y_curvatura
 from .spline import cubic_spline
 from .symbolic import formula_curve
 
-app = FastAPI(title="Montana Rusa Vectorial")
+app = FastAPI(title="Montana rusa - Matematicas 3")
+MUESTRAS = 700
 
 
-class Fisica(BaseModel):
-    v0: float = Field(3.0, ge=0, le=60, description="rapidez inicial (m/s)")
-    mu: float = Field(0.0, ge=0, le=0.5, description="coeficiente de friccion simplificado")
-    samples: int = Field(700, ge=50, le=3000)
-
-
-class TrackRequest(Fisica):
+class Pista(BaseModel):
     points: list[list[float]]
     closed: bool = True
 
 
-class FormulaRequest(Fisica):
+class Formula(BaseModel):
     x: str
     y: str
     z: str
-    t0: float = 0.0
+    t0: float = 0
     t1: float = 6.283185307179586
 
 
-def _lista(a: np.ndarray) -> list:
+def lista(a):
     return np.round(a, 5).tolist()
 
 
-def construir(t, R, D1, D2, closed: bool, v0: float, mu: float) -> dict:
-    T, N, B, kappa, speed = frenet(D1, D2)
-    s_param = arc_length(t, speed)
-    longitud = float(s_param[-1])
-
-    if closed:
-        # La ultima muestra repite la primera. El carrito arranca en el punto mas alto.
-        n = len(t) - 1
-        start = int(np.argmax(R[:n, 2]))
-        idx = np.r_[np.arange(start, n), np.arange(0, start), start]
-        s = s_param[idx] - s_param[start]
-        s[s < 0] += longitud
-        s[-1] = longitud
-    else:
-        start = 0
-        idx = np.arange(len(t))
-        s = s_param
-
-    t, R, D1, D2 = t[idx], R[idx], D1[idx], D2[idx]
-    T, N, B, kappa = T[idx], N[idx], B[idx], kappa[idx]
-    v, aT, aN, gforce, time, stall = simulate(s, R[:, 2], T, N, kappa, v0, mu)
-
-    pasado = slice(0, stall) if stall is not None else slice(None)
+def calcular(t, r, r1, r2, cerrada):
+    T, kappa, rapidez = tangente_y_curvatura(r1, r2)
+    s = longitud_acumulada(t, rapidez)
+    k_max = float(kappa.max())
     return {
-        "t": _lista(t), "s": _lista(s), "pos": _lista(R), "d1": _lista(D1), "d2": _lista(D2),
-        "T": _lista(T), "N": _lista(N), "B": _lista(B), "kappa": _lista(kappa),
-        "v": _lista(v), "aT": _lista(aT), "aN": _lista(aN), "g": _lista(gforce), "time": _lista(time),
+        "t": lista(t), "s": lista(s), "pos": lista(r), "d1": lista(r1), "d2": lista(r2),
+        "T": lista(T), "kappa": lista(kappa), "speed": lista(rapidez),
+        "angle": angulo_entre(r1, r2),
         "summary": {
-            "closed": closed,
-            "length": round(longitud, 3),
-            "maxKappa": round(float(kappa.max()), 5),
-            "minRadius": round(float(1 / kappa.max()), 3) if kappa.max() > 1e-9 else None,
-            "maxG": round(float(gforce[pasado].max()), 3),
-            "maxSpeed": round(float(v.max()), 3),
-            "duration": round(float(time[-1]), 3),
-            "stallIndex": stall,
-            "startT": round(float(t[0]), 5),
+            "closed": cerrada,
+            "length": round(float(s[-1]), 3),
+            "maxKappa": round(k_max, 5),
+            "minRadius": round(1 / k_max, 3) if k_max > 1e-9 else None,
+            "t0": float(t[0]),
+            "t1": float(t[-1]),
         },
     }
 
 
 @app.post("/api/track")
-def track(req: TrackRequest):
+def track(p: Pista):
     try:
-        t, R, D1, D2 = cubic_spline(req.points, req.closed, req.samples)
-        return construir(t, R, D1, D2, req.closed, req.v0, req.mu)
-    except (ValueError, np.linalg.LinAlgError) as exc:
-        raise HTTPException(400, str(exc)) from exc
+        t, r, r1, r2 = cubic_spline(p.points, p.closed, MUESTRAS)
+        return calcular(t, r, r1, r2, p.closed)
+    except (ValueError, np.linalg.LinAlgError) as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/api/formula")
-def formula(req: FormulaRequest):
+def formula(f: Formula):
     try:
-        t, R, D1, D2, latex = formula_curve(req.x, req.y, req.z, req.t0, req.t1, req.samples)
-        closed = bool(np.linalg.norm(R[0] - R[-1]) < 1e-6 and np.linalg.norm(D1[0] - D1[-1]) < 1e-6)
-        data = construir(t, R, D1, D2, closed, req.v0, req.mu)
-        data["latex"] = latex
-        return data
-    except ValueError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        t, r, r1, r2, latex = formula_curve(f.x, f.y, f.z, f.t0, f.t1, MUESTRAS)
+        cerrada = bool(np.allclose(r[0], r[-1], atol=1e-6) and np.allclose(r1[0], r1[-1], atol=1e-6))
+        datos = calcular(t, r, r1, r2, cerrada)
+        datos["latex"] = latex
+        return datos
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
-@app.get("/api/health")
-def health():
-    return {"ok": True}
-
-
-# Si existe el frontend compilado (npm run build), FastAPI lo sirve en "/".
-_dist = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-if _dist.is_dir():
-    app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")
+# si ya se compilo el frontend (npm run build), lo servimos aqui mismo
+carpeta = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+if carpeta.is_dir():
+    app.mount("/", StaticFiles(directory=carpeta, html=True), name="frontend")

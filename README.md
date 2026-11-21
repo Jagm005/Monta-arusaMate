@@ -1,16 +1,18 @@
-# Montaña Rusa Vectorial
+# Montaña rusa con funciones vectoriales
 
-Una montaña rusa en 3D para Cálculo III. Dibujas la pista (o la escribes como $\mathbf r(t)$) y la app muestra en vivo $\mathbf T$, $\mathbf N$, $\mathbf B$, la curvatura $\kappa$, el círculo osculador, la aceleración tangencial y normal, las fuerzas G, la longitud de arco y la recta tangente.
+Proyecto de Matemáticas 3.
 
-- **Backend (Python):** FastAPI + NumPy + SymPy. Toda la matemática está aquí.
-- **Frontend (TypeScript):** Vite + Three.js. Solo dibuja.
-- **Manual:** [frontend/src/manual.md](frontend/src/manual.md). También se abre dentro de la app con el botón "📘 Manual".
+La pista de la montaña rusa es una función vectorial r(t). Mientras el carrito avanza, el programa muestra la velocidad, la aceleración, la rapidez, el vector tangente unitario T, la curvatura, la longitud de la curva y la recta tangente. Se puede dibujar la pista con el mouse o escribir r(t) (vienen ejercicios del taller cargados).
 
-## Cómo correrla
+- **Backend:** Python (FastAPI, NumPy, SymPy). Aquí están los cálculos.
+- **Frontend:** TypeScript con Three.js para el 3D.
+- **Manual:** [frontend/src/manual.md](frontend/src/manual.md). También se abre con el botón "Manual" dentro del programa.
 
-Necesitas Python 3.10+ y Node 18+.
+## Cómo correrlo
 
-**1. Backend** (una terminal, desde la carpeta `backend`):
+Se necesita Python y Node.js.
+
+**Backend** (terminal 1, en la carpeta `backend`):
 
 ```powershell
 python -m venv C:\venvs\montana
@@ -18,40 +20,27 @@ C:\venvs\montana\Scripts\python -m pip install -r requirements.txt
 C:\venvs\montana\Scripts\python -m uvicorn app.main:app --port 8000
 ```
 
-> En Windows, crea el venv en una ruta corta (como `C:\venvs\...`): si la carpeta del proyecto tiene una ruta muy larga, pip falla al instalar.
+(En Windows el venv toca crearlo en una ruta corta; si la carpeta tiene una ruta muy larga, pip falla.)
 
-**2. Frontend** (otra terminal, desde la carpeta `frontend`):
+**Frontend** (terminal 2, en la carpeta `frontend`):
 
 ```powershell
 npm install
 npm run dev
 ```
 
-Abre http://localhost:5173
+Luego se abre http://localhost:5173
 
-**Versión de una sola terminal (para presentar):** ejecuta `npm run build` en `frontend` y luego solo el backend. FastAPI sirve la app compilada en http://localhost:8000
+## Pruebas
 
-## Tests de la matemática
+En `backend`:
 
 ```powershell
-cd backend
 C:\venvs\montana\Scripts\python -m pytest -q
 ```
 
-Comprueban que $\kappa = 5/29$ en el ejercicio 20, que $\kappa = 1/R$ en un círculo, que $\mathbf T$, $\mathbf N$, $\mathbf B$ son ortonormales, que la energía se conserva sin fricción y que se revisa el dominio.
+Comparan el programa con ejercicios que hicimos a mano:
 
-## Estructura
-
-```
-backend/app/spline.py     puntos dibujados -> r(t), r'(t), r''(t)  (spline cubico C2)
-backend/app/geometry.py   T, N, B, curvatura, longitud de arco
-backend/app/physics.py    energia, a_T, a_N, fuerza G
-backend/app/symbolic.py   modo formula: derivadas exactas con SymPy
-backend/app/main.py       API /api/track y /api/formula
-frontend/src/main.ts      interfaz y animacion
-frontend/src/track.ts     rieles, durmientes, soportes, color por G o kappa
-frontend/src/ride.ts      carrito, vectores T N B a, circulo osculador
-frontend/src/editor.ts    dibujar y mover puntos de control
-frontend/src/hud.ts       panel de valores, rectas/planos y grafica
-frontend/src/manual.md    manual: que tema se usa, donde y por que
-```
+- Ejercicio 20: κ = 5/29.
+- Ejercicio 13: la hélice siempre baja y su rapidez es √10.
+- Ejercicio 12: rapidez 30 y κ = 1/5.

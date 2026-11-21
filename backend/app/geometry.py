@@ -1,58 +1,40 @@
-"""Geometria diferencial de curvas: triedro de Frenet, curvatura y longitud de arco.
+"""Calculos de la curva (tema: Rectas, curvas y curvatura).
 
-Formulas del curso (seccion "Rectas, curvas y curvatura"):
-    T = r' / |r'|
-    B = (r' x r'') / |r' x r''|
-    N = B x T
-    kappa = |r' x r''| / |r'|^3
-    s(t) = integral de |r'(u)| du
+Formulas que usamos (las del taller):
+    rapidez = |r'(t)|
+    T(t)    = r'(t) / |r'(t)|                  vector tangente unitario
+    kappa   = |r'(t) x r''(t)| / |r'(t)|^3      curvatura (usa producto cruz)
+    L       = integral de |r'(t)| dt            longitud de la curva
+    cos(angulo entre v y a) = (v . a) / (|v| |a|)   (producto punto)
 """
-from __future__ import annotations
-
 import numpy as np
 
-EPS = 1e-9
-KAPPA_MIN = 1e-6  # por debajo de esto la curva es practicamente una recta
+
+def tangente_y_curvatura(d1, d2):
+    rapidez = np.linalg.norm(d1, axis=1)
+    if np.any(rapidez < 1e-9):
+        raise ValueError("En algun punto r'(t) = 0, la curva no es suave ahi.")
+    T = d1 / rapidez[:, None]
+    cruz = np.cross(d1, d2)
+    kappa = np.linalg.norm(cruz, axis=1) / rapidez**3
+    return T, kappa, rapidez
 
 
-def _perpendicular(v: np.ndarray) -> np.ndarray:
-    eje = np.eye(3)[np.argmin(np.abs(v))]
-    p = np.cross(v, eje)
-    return p / np.linalg.norm(p)
+def longitud_acumulada(t, rapidez):
+    # integral de |r'(t)| con la regla del trapecio
+    pedazos = 0.5 * (rapidez[1:] + rapidez[:-1]) * np.diff(t)
+    return np.concatenate([[0.0], np.cumsum(pedazos)])
 
 
-def frenet(D1: np.ndarray, D2: np.ndarray):
-    speed = np.linalg.norm(D1, axis=1)
-    if np.any(speed < EPS):
-        raise ValueError("r'(t) = 0 en algun punto: la curva no es suave ahi (el carrito se detendria en el parametro).")
-    T = D1 / speed[:, None]
-    C = np.cross(D1, D2)
-    cn = np.linalg.norm(C, axis=1)
-    kappa = cn / speed**3
-
-    N = np.zeros_like(D1)
-    B = np.zeros_like(D1)
-    ok = kappa > KAPPA_MIN
-    B[ok] = C[ok] / cn[ok, None]
-    N[ok] = np.cross(B[ok], T[ok])
-
-    # En tramos rectos (kappa = 0) N no esta definido: tomamos el del vecino mas cercano.
-    malos = np.where(~ok)[0]
-    buenos = np.where(ok)[0]
-    for i in malos:
-        if buenos.size:
-            j = buenos[np.argmin(np.abs(buenos - i))]
-            n = N[j] - np.dot(N[j], T[i]) * T[i]
-            nn = np.linalg.norm(n)
-            n = n / nn if nn > 1e-6 else _perpendicular(T[i])
+def angulo_entre(v, a):
+    """Angulo (en grados) entre la velocidad y la aceleracion en cada punto."""
+    norma_v = np.linalg.norm(v, axis=1)
+    norma_a = np.linalg.norm(a, axis=1)
+    angulos = []
+    for i in range(len(v)):
+        if norma_a[i] < 1e-9:
+            angulos.append(None)  # si a = 0 no hay angulo
         else:
-            n = _perpendicular(T[i])
-        N[i] = n
-        B[i] = np.cross(T[i], n)
-    return T, N, B, kappa, speed
-
-
-def arc_length(t: np.ndarray, speed: np.ndarray) -> np.ndarray:
-    """s(t) acumulada con la regla del trapecio."""
-    ds = 0.5 * (speed[1:] + speed[:-1]) * np.diff(t)
-    return np.concatenate([[0.0], np.cumsum(ds)])
+            c = np.dot(v[i], a[i]) / (norma_v[i] * norma_a[i])
+            angulos.append(round(float(np.degrees(np.arccos(np.clip(c, -1, 1)))), 3))
+    return angulos

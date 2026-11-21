@@ -1,56 +1,37 @@
 export type Vec3 = [number, number, number];
 
-/** Lo que devuelve el backend de Python: una muestra por cada posicion de la pista. */
+// Lo que nos devuelve Python (una posicion por cada valor de t)
 export interface TrackData {
   t: number[];
-  s: number[];
-  pos: Vec3[];
-  d1: Vec3[];
-  d2: Vec3[];
-  T: Vec3[];
-  N: Vec3[];
-  B: Vec3[];
-  kappa: number[];
-  v: number[];
-  aT: number[];
-  aN: number[];
-  g: number[];
-  time: number[];
+  s: number[]; // longitud recorrida desde el inicio
+  pos: Vec3[]; // r(t)
+  d1: Vec3[]; // r'(t) = velocidad
+  d2: Vec3[]; // r''(t) = aceleracion
+  T: Vec3[]; // vector tangente unitario
+  kappa: number[]; // curvatura
+  speed: number[]; // rapidez |r'(t)|
+  angle: (number | null)[]; // angulo entre v y a (grados)
   summary: {
     closed: boolean;
     length: number;
     maxKappa: number;
     minRadius: number | null;
-    maxG: number;
-    maxSpeed: number;
-    duration: number;
-    stallIndex: number | null;
-    startT: number;
+    t0: number;
+    t1: number;
   };
-  latex?: Record<"r" | "d1" | "d2" | "speed" | "T" | "kappa", string>;
+  latex?: Record<"r" | "d1" | "d2" | "speed" | "kappa", string>;
 }
 
-export interface Physics {
-  v0: number;
-  mu: number;
-}
-
-/** Estado interpolado del carrito en un instante. */
+// Valores en el punto donde va el carrito
 export interface RideState {
-  index: number;
   t: number;
   s: number;
   pos: Vec3;
   d1: Vec3;
   d2: Vec3;
   T: Vec3;
-  N: Vec3;
-  B: Vec3;
   up: Vec3;
   kappa: number;
-  v: number;
-  aT: number;
-  aN: number;
-  g: number;
-  stalled: boolean;
+  speed: number;
+  angle: number | null;
 }
