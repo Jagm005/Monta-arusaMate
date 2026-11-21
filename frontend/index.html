@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Montaña Rusa Vectorial</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="viewport"></div>
+
+    <header id="topbar">
+      <div class="brand">
+        <span class="logo">r(t)</span>
+        <div>
+          <h1>Montaña Rusa Vectorial</h1>
+          <p>Funciones vectoriales · curvatura · triedro de Frenet</p>
+        </div>
+      </div>
+      <button id="btn-manual" class="btn ghost">📘 Manual: ¿por qué cada tema?</button>
+    </header>
+
+    <aside id="left" class="panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="draw">✏️ Dibujar</button>
+        <button class="tab" data-tab="formula">ƒ Fórmula r(t)</button>
+      </div>
+
+      <section class="tab-body" data-body="draw">
+        <p class="hint">Clic en el suelo para agregar puntos. Clic en un punto y arrastra las flechas para moverlo (azul = altura). <kbd>Supr</kbd> borra.</p>
+        <label class="field">Pista de ejemplo
+          <select id="draw-preset"></select>
+        </label>
+        <label class="field">Altura del próximo punto: <b id="height-val">10 m</b>
+          <input id="height" type="range" min="1" max="40" step="1" value="10" />
+        </label>
+        <label class="check"><input id="closed" type="checkbox" checked /> Pista cerrada (circuito)</label>
+        <div class="btn-row">
+          <button id="btn-delete" class="btn">Borrar punto</button>
+          <button id="btn-clear" class="btn">Empezar de cero</button>
+        </div>
+      </section>
+
+      <section class="tab-body hidden" data-body="formula">
+        <label class="field">Curvas de la guía
+          <select id="formula-preset"></select>
+        </label>
+        <div class="formula-grid">
+          <label>x(t) =<input id="fx" spellcheck="false" /></label>
+          <label>y(t) =<input id="fy" spellcheck="false" /></label>
+          <label>z(t) =<input id="fz" spellcheck="false" /></label>
+          <label>t desde<input id="t0" type="number" step="any" /></label>
+          <label>hasta<input id="t1" type="number" step="any" /></label>
+        </div>
+        <button id="btn-formula" class="btn primary">Calcular con SymPy</button>
+        <div id="latex" class="latex-box"></div>
+      </section>
+
+      <section class="group">
+        <h2>Física</h2>
+        <label class="field">Rapidez inicial v₀: <b id="v0-val">3 m/s</b>
+          <input id="v0" type="range" min="0" max="25" step="0.5" value="3" />
+        </label>
+        <label class="field">Fricción μ: <b id="mu-val">0.000</b>
+          <input id="mu" type="range" min="0" max="0.08" step="0.002" value="0" />
+        </label>
+        <label class="field">Velocidad de reproducción: <b id="speed-val">1×</b>
+          <input id="speed" type="range" min="0.1" max="3" step="0.1" value="1" />
+        </label>
+        <div class="goto">
+          <label>Ir a t =<input id="goto-t" type="text" value="pi" /></label>
+          <button id="btn-goto" class="btn">Ir</button>
+        </div>
+      </section>
+
+      <section class="group">
+        <h2>Ver</h2>
+        <div class="toggles">
+          <label class="check"><input type="checkbox" data-vis="T" checked /><span class="dot t"></span>T tangente</label>
+          <label class="check"><input type="checkbox" data-vis="N" checked /><span class="dot n"></span>N normal</label>
+          <label class="check"><input type="checkbox" data-vis="B" /><span class="dot b"></span>B binormal</label>
+          <label class="check"><input type="checkbox" data-vis="a" /><span class="dot a"></span>a aceleración</label>
+          <label class="check"><input type="checkbox" data-vis="circle" checked /><span class="dot c"></span>Círculo osculador</label>
+        </div>
+        <label class="field">Color de la pista
+          <select id="color-mode"><option value="g">Fuerza G</option><option value="kappa">Curvatura κ</option></select>
+        </label>
+        <label class="field">Cámara
+          <select id="camera-mode"><option value="orbit">Órbita libre</option><option value="follow">Seguir al carrito</option><option value="rider">Pasajero (1ª persona)</option></select>
+        </label>
+      </section>
+    </aside>
+
+    <aside id="right" class="panel"><div id="hud"></div></aside>
+
+    <section id="bottom" class="panel">
+      <div class="playbar">
+        <button id="btn-play" class="btn primary round" title="Play / pausa (espacio)">▶</button>
+        <button id="btn-restart" class="btn round" title="Reiniciar">⟲</button>
+        <div id="summary"></div>
+      </div>
+      <canvas id="chart"></canvas>
+      <div class="legend"><span class="lg z"></span>altura z(s) <span class="lg k"></span>curvatura κ(s) <span class="lg g"></span>fuerza G(s) <span class="muted">· arrastra sobre la gráfica para mover el carrito</span></div>
+    </section>
+
+    <div id="toast" class="hidden"></div>
+
+    <dialog id="manual">
+      <div class="manual-head">
+        <span>📘 Manual</span>
+        <button id="btn-close-manual" class="btn ghost">Cerrar ✕</button>
+      </div>
+      <article id="manual-body"></article>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
