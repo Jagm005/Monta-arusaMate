@@ -2,7 +2,7 @@
 
 Proyecto de Matemáticas 3.
 
-La pista de la montaña rusa es una función vectorial r(t). Mientras el carrito avanza, el programa muestra la velocidad, la aceleración, la rapidez, el vector tangente unitario T, la curvatura, la longitud de la curva y la recta tangente. Se puede dibujar la pista con el mouse o escribir r(t) (vienen ejercicios del taller cargados).
+La pista de la montaña rusa es una función vectorial r(t). Mientras el carrito avanza, el programa muestra la velocidad, la aceleración, la rapidez, el vector tangente unitario T, la curvatura, la longitud de la curva, la recta tangente y la fuerza G que siente el pasajero. Se puede dibujar la pista con el mouse o escribir r(t) (vienen ejercicios del taller cargados).
 
 - **Backend:** Python (FastAPI, NumPy, SymPy). Aquí están los cálculos.
 - **Frontend:** TypeScript con Three.js para el 3D.
@@ -76,4 +76,6 @@ Comparan el programa con ejercicios que hicimos a mano:
 
 - Ejercicio 20: κ = 5/29.
 - Ejercicio 13: la hélice siempre baja y su rapidez es √10.
-- Ejercicio 12: rapidez 30 y κ = 1/5.
+- Ejercicio 12: rapidez 30 y κ = 1/5. También la fuerza G: √(180² + 9.8²) / 9.8 ≈ 18.4 G.
+- Una recta a velocidad constante da 1 G (solo el peso).
+- Las pistas dibujadas van a 15 m/s y la G de una curva horizontal coincide con v²/R.

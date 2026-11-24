@@ -10,11 +10,13 @@ export interface TrackData {
   T: Vec3[]; // vector tangente unitario
   kappa: number[]; // curvatura
   speed: number[]; // rapidez |r'(t)|
+  g: number[]; // fuerza G que siente el pasajero
   angle: (number | null)[]; // angulo entre v y a (grados)
   summary: {
     closed: boolean;
     length: number;
     maxKappa: number;
+    maxG: number;
     minRadius: number | null;
     t0: number;
     t1: number;
@@ -33,5 +35,6 @@ export interface RideState {
   up: Vec3;
   kappa: number;
   speed: number;
+  g: number;
   angle: number | null;
 }

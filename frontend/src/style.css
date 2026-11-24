@@ -56,6 +56,12 @@ h1 { font-size: 17px; margin: 0; }
 .tab.active { background: var(--rojo); color: #fff; border-color: var(--rojo); }
 .hidden { display: none !important; }
 
+.modos { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--borde); border-radius: 6px; overflow: hidden; margin-bottom: 8px; }
+.modo { background: #12161f; color: var(--gris); border: 0; border-right: 1px solid var(--borde); padding: 7px 4px; cursor: pointer; font-size: 13px; }
+.modo:last-child { border-right: 0; }
+.modo:hover { color: var(--texto); }
+.modo.active { background: #fde047; color: #000; font-weight: bold; }
+
 .group { border-top: 1px solid var(--borde); margin-top: 12px; padding-top: 10px; }
 h2 { font-size: 12px; text-transform: uppercase; color: var(--gris); margin: 0 0 8px; }
 h3 { font-size: 13px; margin: 0 0 6px; display: flex; justify-content: space-between; }
@@ -124,6 +130,8 @@ input[type="range"] { width: 100%; }
 .lg.z { background: #94a3b8; }
 .lg.k { background: #e879f9; }
 .lg.r { background: #60a5fa; }
+.lg.g { background: #fb923c; }
+.medidor + .medidor { border-top: 1px solid var(--borde); padding-top: 10px; }
 
 #toast {
   position: fixed;

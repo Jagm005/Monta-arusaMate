@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .geometry import angulo_entre, longitud_acumulada, tangente_y_curvatura
+from .geometry import angulo_entre, fuerza_g, longitud_acumulada, tangente_y_curvatura
 from .spline import cubic_spline
 from .symbolic import formula_curve
 
@@ -38,15 +38,17 @@ def lista(a):
 def calcular(t, r, r1, r2, cerrada):
     T, kappa, rapidez = tangente_y_curvatura(r1, r2)
     s = longitud_acumulada(t, rapidez)
+    g = fuerza_g(r2)
     k_max = float(kappa.max())
     return {
         "t": lista(t), "s": lista(s), "pos": lista(r), "d1": lista(r1), "d2": lista(r2),
-        "T": lista(T), "kappa": lista(kappa), "speed": lista(rapidez),
+        "T": lista(T), "kappa": lista(kappa), "speed": lista(rapidez), "g": lista(g),
         "angle": angulo_entre(r1, r2),
         "summary": {
             "closed": cerrada,
             "length": round(float(s[-1]), 3),
             "maxKappa": round(k_max, 5),
+            "maxG": round(float(g.max()), 3),
             "minRadius": round(1 / k_max, 3) if k_max > 1e-9 else None,
             "t0": float(t[0]),
             "t1": float(t[-1]),

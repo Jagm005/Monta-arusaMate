@@ -23,7 +23,12 @@
       </div>
 
       <section class="tab-body" data-body="dibujar">
-        <p class="hint">Clic en el suelo para poner un punto. Clic sobre un punto (o su etiqueta P1, P2...) para seleccionarlo y arrástralo para moverlo. La altura se cambia con el slider o con la flecha azul. Supr lo borra, Esc lo deselecciona.</p>
+        <div class="modos" role="group" aria-label="Qué hace un clic">
+          <button class="modo" data-modo="mirar" title="Tecla V">Mirar</button>
+          <button class="modo" data-modo="agregar" title="Tecla A">Agregar</button>
+          <button class="modo active" data-modo="mover" title="Tecla M">Mover</button>
+        </div>
+        <p class="hint" id="modo-hint"></p>
         <label class="field">Pista de ejemplo
           <select id="draw-preset"></select>
         </label>
@@ -54,7 +59,7 @@
 
       <section class="group">
         <h2>Animación</h2>
-        <label class="field">Velocidad: <b id="speed-val">1×</b>
+        <label class="field"><span>Velocidad: <b id="speed-val">1×</b> <span class="muted">(1× = tiempo real)</span></span>
           <input id="speed" type="range" min="0.1" max="3" step="0.1" value="1" />
         </label>
         <div class="goto">
@@ -71,7 +76,10 @@
         <label class="field" style="margin-top:8px">Cámara
           <select id="camera-mode"><option value="orbita">Libre</option><option value="seguir">Seguir el carrito</option></select>
         </label>
-        <p class="hint small">Color de la pista: verde = casi recta, rojo = curva cerrada (radio menor a 10).</p>
+        <label class="field">Color de la pista
+          <select id="color-por"><option value="g">Fuerza G</option><option value="kappa">Curvatura κ</option></select>
+        </label>
+        <p class="hint small" id="color-hint">verde = 1 G (peso normal), rojo = 4 G o más.</p>
       </section>
     </aside>
 
@@ -84,7 +92,7 @@
         <div id="summary"></div>
       </div>
       <canvas id="chart"></canvas>
-      <div class="legend"><span class="lg z"></span>altura z <span class="lg k"></span>curvatura κ <span class="lg r"></span>rapidez |r'(t)| <span class="muted">(eje horizontal: t)</span></div>
+      <div class="legend"><span class="lg z"></span>altura z <span class="lg k"></span>curvatura κ <span class="lg r"></span>rapidez |r'(t)| <span class="lg g"></span>fuerza G <span class="muted">(eje horizontal: t en segundos)</span></div>
     </section>
 
     <div id="toast" class="hidden"></div>

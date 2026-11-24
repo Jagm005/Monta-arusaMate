@@ -6,14 +6,23 @@ import type { World } from "./scene";
 const RADIO_CLIC = 25; // pixeles: si haces clic a menos de esto de un punto, lo agarras
 
 /**
+ * Que hace un clic en la pista:
+ *  - "mirar":   nada (solo se gira la camara)
+ *  - "agregar": clic en el suelo pone un punto nuevo
+ *  - "mover":   clic en un punto lo selecciona y se puede arrastrar; clic en el vacio deselecciona
+ */
+export type Modo = "mirar" | "agregar" | "mover";
+
+/**
  * Editor para dibujar la pista:
- *  - clic en el suelo        -> pone un punto nuevo
- *  - clic cerca de un punto  -> lo selecciona (amarillo)
+ *  - clic cerca de un punto  -> lo selecciona (amarillo)   [agregar y mover]
  *  - arrastrar un punto      -> lo mueve por encima del suelo (x, y)
+ *  - clic en el suelo        -> punto nuevo (agregar) o deseleccionar (mover)
  *  - flecha azul o slider    -> cambia la altura z del punto seleccionado
  *  - Supr                    -> borra el punto seleccionado
  */
 export class Editor {
+  modo: Modo = "mover";
   readonly group = new THREE.Group();
   private points: THREE.Mesh[] = [];
   private selected: THREE.Mesh | null = null;
@@ -67,7 +76,7 @@ export class Editor {
   private alPresionar(e: PointerEvent) {
     this.down.set(e.clientX, e.clientY);
     this.agarroPunto = false;
-    if (!this.enabled || e.button !== 0) return;
+    if (!this.enabled || e.button !== 0 || this.modo === "mirar") return;
     if (this.transform.axis !== null) return; // esta usando las flechas del gizmo
     const punto = this.puntoCerca(e.clientX, e.clientY);
     if (!punto) return;
@@ -94,7 +103,9 @@ export class Editor {
       return;
     }
     if (this.enabled && !this.transform.dragging) {
-      dom.style.cursor = this.puntoCerca(e.clientX, e.clientY) ? "grab" : "";
+      if (this.modo === "mirar") dom.style.cursor = "";
+      else if (this.puntoCerca(e.clientX, e.clientY)) dom.style.cursor = "grab";
+      else dom.style.cursor = this.modo === "agregar" ? "crosshair" : "";
     }
   }
 
@@ -105,10 +116,15 @@ export class Editor {
       if (this.seMovio) this.onChange(true);
       return;
     }
-    if (!this.enabled || e.button !== 0 || this.agarroPunto) return;
+    if (!this.enabled || e.button !== 0 || this.agarroPunto || this.modo === "mirar") return;
     if (this.down.distanceTo(new THREE.Vector2(e.clientX, e.clientY)) > 5) return; // fue para girar la camara
     if (this.transform.dragging || this.transform.axis !== null) return;
-    // clic en el suelo: punto nuevo (despues del seleccionado)
+    if (this.modo === "mover") {
+      // clic en el vacio: no crea nada, solo suelta el punto seleccionado
+      this.select(null);
+      return;
+    }
+    // modo agregar: punto nuevo en el suelo (despues del seleccionado)
     const p = this.sobrePlano(e.clientX, e.clientY, 0);
     if (!p) return;
     const at = this.selected ? this.points.indexOf(this.selected) + 1 : this.points.length;
@@ -174,9 +190,15 @@ export class Editor {
     this.select(m);
   }
 
+  setModo(m: Modo) {
+    this.modo = m;
+    this.world.renderer.domElement.style.cursor = "";
+    if (m === "mirar") this.select(null); // en "mirar" no queda nada seleccionado
+  }
+
   select(m: THREE.Mesh | null) {
     this.selected = m;
-    if (m && this.enabled) this.transform.attach(m);
+    if (m && this.enabled && this.modo !== "mirar") this.transform.attach(m);
     else this.transform.detach();
     this.refresh();
     this.avisarSeleccion();
@@ -239,7 +261,7 @@ export class Editor {
     this.group.visible = on;
     for (const m of this.points) m.traverse((o) => o instanceof CSS2DObject && (o.visible = on));
     if (!on) this.transform.detach();
-    else if (this.selected) this.transform.attach(this.selected);
+    else if (this.selected && this.modo !== "mirar") this.transform.attach(this.selected);
   }
 
   private refresh() {

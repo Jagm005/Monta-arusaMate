@@ -12,6 +12,13 @@ const vec = (v: Vec3, d = 2) => `\\langle ${num(v[0], d)},\\ ${num(v[1], d)},\\ 
 const mas = (x: number) => (x < 0 ? `- ${num(-x)}` : `+ ${num(x)}`);
 
 // Clasificamos la curva por su radio (1/kappa)
+// Que tan fuerte es la fuerza G para el pasajero
+function tipoDeG(g: number) {
+  if (g < 2) return { nombre: "Suave", clase: "ok" };
+  if (g < 4) return { nombre: "Fuerte", clase: "warn" };
+  return { nombre: "Extrema", clase: "bad" };
+}
+
 function tipoDeCurva(k: number) {
   const radio = k > 1e-6 ? 1 / k : Infinity;
   if (radio > 25) return { nombre: "Casi recta", clase: "ok" };
@@ -44,8 +51,23 @@ export class Hud {
       Math.abs(c) <= 1e-3 ? `z = ${num(z0)}` : null,
     ].filter(Boolean);
     const pct = Math.min(st.kappa / 0.1, 1) * 100; // la barra se llena con radio 10
+    const tipoG = tipoDeG(st.g);
+    const pctG = Math.min(st.g / 5, 1) * 100; // la barra de G se llena en 5 G
+    const [ax, ay, az] = st.d2;
 
     this.root.innerHTML = `
+      <div class="medidor ${tipoG.clase}">
+        <div class="medidor-top">
+          <span class="medidor-valor">${num(st.g, 2)} G</span>
+          <span class="medidor-tipo">Fuerza ${tipoG.nombre}</span>
+        </div>
+        <div class="barra"><div class="barra-tapa" style="left:${pctG}%"></div></div>
+        <div class="muted">el pasajero siente <b>${num(st.g, 1)} veces su peso</b></div>
+        <div class="row">${tex(`G = \\dfrac{|\\mathbf a - \\mathbf g|}{9.8} = \\dfrac{|\\langle ${num(ax, 1)},\\ ${num(ay, 1)},\\ ${num(az + 9.8, 1)}\\rangle|}{9.8}`)}</div>
+        <p class="muted small">con g = ⟨0, 0, −9.8⟩ (la gravedad). Más G = más fuerza contra el pasajero.</p>
+      </div>
+`;
+    this.root.innerHTML += `
       <div class="medidor ${tipo.clase}">
         <div class="medidor-top">
           <span class="medidor-valor">κ = ${num(st.kappa, 4)}</span>
@@ -165,6 +187,7 @@ export class Chart {
     };
     linea(d.kappa, "#e879f9");
     linea(d.speed, "#60a5fa");
+    linea(d.g, "#fb923c");
 
     const xc = X(tActual);
     ctx.strokeStyle = "#fff";

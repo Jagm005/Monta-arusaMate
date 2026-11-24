@@ -2,14 +2,14 @@ import "katex/dist/katex.min.css";
 import "./style.css";
 import * as THREE from "three";
 import { fetchFormula, fetchTrack } from "./api";
-import { Editor } from "./editor";
+import { Editor, type Modo } from "./editor";
 import { computeUps, indexOf, v3 } from "./frames";
 import { Chart, Hud, tex } from "./hud";
 import { renderManual } from "./manual";
 import { EJERCICIOS, PISTAS } from "./presets";
 import { Ride } from "./ride";
 import { World } from "./scene";
-import { TrackView } from "./track";
+import { TrackView, type ColorPor } from "./track";
 import type { TrackData } from "./types";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -30,6 +30,7 @@ let corriendo = true;
 let redibujar = true;
 let camara: "orbita" | "seguir" = "orbita";
 const ver = { T: true, v: true, a: true };
+let colorPor: ColorPor = "g"; // la pista se pinta segun la fuerza G (o la curvatura)
 
 let timerAviso = 0;
 function aviso(msg: string, error = false) {
@@ -86,7 +87,7 @@ function mostrar(d: TrackData, reencuadrar: boolean) {
   const sueloZ = modo === "dibujar" ? 0 : Math.min(caja.min.z - ancho * 2, 0);
   if (reencuadrar || modo === "formula") world.setGround(sueloZ, caja.getCenter(new THREE.Vector3()), Math.max(tam, 20));
 
-  pista.build(d, ups, ancho, sueloZ);
+  pista.build(d, ups, ancho, sueloZ, colorPor);
   ride.setData(d, ups, ancho);
   chart.setData(d);
   const { t0, t1 } = d.summary;
@@ -96,6 +97,7 @@ function mostrar(d: TrackData, reencuadrar: boolean) {
   const s = d.summary;
   $("summary").innerHTML = `
     <span class="chip">longitud <b>${s.length.toFixed(2)}</b></span>
+    <span class="chip">G máx <b>${s.maxG.toFixed(2)}</b></span>
     <span class="chip">κ máx <b>${s.maxKappa.toFixed(4)}</b></span>
     <span class="chip">radio mín <b>${s.minRadius !== null ? s.minRadius.toFixed(2) : "∞"}</b></span>
     <span class="chip">t ∈ <b>[${t0.toFixed(2)}, ${t1.toFixed(2)}]</b></span>`;
@@ -117,7 +119,7 @@ world.onFrame((dt) => {
   if (!data) return;
   const { t0, t1, closed } = data.summary;
   if (corriendo) {
-    tActual += dt * ((t1 - t0) / 20) * +inp("speed").value; // una vuelta dura ~20 s a velocidad 1
+    tActual += dt * +inp("speed").value; // t esta en segundos: a 1x va en tiempo real
     if (tActual >= t1) {
       if (closed) tActual = t0 + (tActual - t1);
       else {
@@ -224,6 +226,20 @@ selEj.addEventListener("change", () => cargarEjercicio(selEj.value));
 $("btn-formula").addEventListener("click", () => calcular(true));
 ["fx", "fy", "fz", "t0", "t1"].forEach((id) => inp(id).addEventListener("keydown", (e) => e.key === "Enter" && calcular(true)));
 
+// modos del editor: que hace un clic
+const AYUDA_MODO: Record<Modo, string> = {
+  mirar: "Solo mirar: los clics no crean ni seleccionan nada. Arrastra para girar la cámara.",
+  agregar: "Clic en el suelo para poner un punto nuevo (queda después del seleccionado). Clic sobre un punto para seleccionarlo.",
+  mover: "Clic sobre un punto (o su etiqueta P1, P2...) y arrástralo. Clic en el vacío para no seleccionar nada. La altura se cambia con el slider o la flecha azul. Supr borra el punto.",
+};
+function cambiarModo(m: Modo) {
+  editor.setModo(m);
+  document.querySelectorAll<HTMLButtonElement>(".modo").forEach((b) => b.classList.toggle("active", b.dataset.modo === m));
+  $("modo-hint").textContent = AYUDA_MODO[m];
+}
+document.querySelectorAll<HTMLButtonElement>(".modo").forEach((b) => b.addEventListener("click", () => cambiarModo(b.dataset.modo as Modo)));
+cambiarModo("mover");
+
 // editor
 let timerEditor = 0;
 editor.onChange = (final) => {
@@ -238,7 +254,8 @@ $("btn-delete").addEventListener("click", () => editor.removeSelected());
 $("btn-clear").addEventListener("click", () => {
   selPista.value = "blanco";
   cargarPista("blanco");
-  aviso("Haz clic en el suelo para poner el primer punto.");
+  cambiarModo("agregar");
+  aviso("Modo Agregar: haz clic en el suelo para poner el primer punto.");
 });
 
 // slider de altura: cambia el punto seleccionado (y la altura de los puntos nuevos)
@@ -295,6 +312,12 @@ document.querySelectorAll<HTMLInputElement>("[data-vis]").forEach((cb) =>
     redibujar = true;
   }),
 );
+$<HTMLSelectElement>("color-por").addEventListener("change", (e) => {
+  colorPor = (e.target as HTMLSelectElement).value as ColorPor;
+  $("color-hint").textContent =
+    colorPor === "g" ? "verde = 1 G (peso normal), rojo = 4 G o más." : "verde = casi recta, rojo = curva cerrada (radio menor a 10).";
+  if (data) mostrar(data, false);
+});
 $<HTMLSelectElement>("camera-mode").addEventListener("change", (e) => {
   camara = (e.target as HTMLSelectElement).value as typeof camara;
   world.controls.enabled = camara === "orbita";
@@ -311,6 +334,9 @@ window.addEventListener("keydown", (e) => {
   if (tag === "INPUT" || tag === "SELECT") return;
   if (e.key === "Delete" || e.key === "Backspace") editor.removeSelected();
   else if (e.key === "Escape") editor.select(null);
+  else if (modo === "dibujar" && (e.key === "v" || e.key === "V")) cambiarModo("mirar");
+  else if (modo === "dibujar" && (e.key === "a" || e.key === "A")) cambiarModo("agregar");
+  else if (modo === "dibujar" && (e.key === "m" || e.key === "M")) cambiarModo("mover");
   else if (e.key === " ") {
     e.preventDefault();
     playPausa();

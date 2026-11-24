@@ -2,9 +2,15 @@ import * as THREE from "three";
 import { indexOf, v3 } from "./frames";
 import type { TrackData } from "./types";
 
-/** Color segun la curvatura: verde = casi recta, rojo = radio menor a 10 (kappa > 0.1). */
-export function colorKappa(data: TrackData, i: number) {
-  const x = Math.min(data.kappa[i] / 0.1, 1);
+export type ColorPor = "kappa" | "g";
+
+/**
+ * Color de cada tramo, de verde a rojo:
+ *  - curvatura: rojo cuando el radio es menor a 10 (kappa > 0.1)
+ *  - fuerza G:  verde en 1 G (peso normal), rojo desde 4 G
+ */
+export function colorTramo(data: TrackData, i: number, por: ColorPor) {
+  const x = por === "kappa" ? Math.min(data.kappa[i] / 0.1, 1) : Math.min(Math.max((data.g[i] - 1) / 3, 0), 1);
   return new THREE.Color().setHSL(0.33 * (1 - x), 0.9, 0.5);
 }
 
@@ -25,7 +31,7 @@ export class TrackView {
     this.group.clear();
   }
 
-  build(data: TrackData, ups: THREE.Vector3[], ancho: number, sueloZ: number) {
+  build(data: TrackData, ups: THREE.Vector3[], ancho: number, sueloZ: number, por: ColorPor) {
     this.clear();
     const cerrada = data.summary.closed;
     const n = cerrada ? data.pos.length - 1 : data.pos.length;
@@ -44,12 +50,12 @@ export class TrackView {
       this.group.add(riel);
     }
 
-    // tubo del medio con el color de la curvatura
+    // tubo del medio con el color de la curvatura o de la fuerza G
     const medio = new THREE.CatmullRomCurve3(P.map((p, i) => p.clone().addScaledVector(ups[i], -ancho * 0.32)), cerrada);
     const geo = new THREE.TubeGeometry(medio, segs, ancho * 0.17, 10, cerrada);
     const colores = new Float32Array(geo.attributes.position.count * 3);
     for (let i = 0; i <= segs; i++) {
-      const c = colorKappa(data, Math.round(indexOf(data.s, (i / segs) * data.summary.length)));
+      const c = colorTramo(data, Math.round(indexOf(data.s, (i / segs) * data.summary.length)), por);
       for (let j = 0; j <= 10; j++) c.toArray(colores, (i * 11 + j) * 3);
     }
     geo.setAttribute("color", new THREE.BufferAttribute(colores, 3));

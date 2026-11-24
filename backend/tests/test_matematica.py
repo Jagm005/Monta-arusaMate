@@ -48,6 +48,29 @@ def test_T_es_unitario():
     assert np.allclose(np.linalg.norm(d["T"], axis=1), 1, atol=1e-4)
 
 
+def test_fuerza_g_en_recta_es_1():
+    # recta horizontal a velocidad constante: a = 0, el pasajero solo siente su peso
+    d = formula("3t", "0", "10", 0, 5).json()
+    assert np.allclose(d["g"], 1, atol=1e-6)
+
+
+def test_fuerza_g_ejercicio_12():
+    # circulo horizontal radio 5, omega 6: |a| = 5*36 = 180 (hacia el centro)
+    # G = sqrt(180^2 + 9.8^2) / 9.8
+    d = formula("5cos(6t)", "5sin(6t)", "0", 0, 1).json()
+    esperado = math.sqrt(180**2 + 9.8**2) / 9.8
+    assert np.allclose(d["g"], esperado, rtol=1e-4)
+
+
+def test_pista_dibujada_va_a_15_m_s():
+    R = 20
+    puntos = [[R * math.cos(a), R * math.sin(a), 10] for a in np.linspace(0, 2 * math.pi, 24, endpoint=False)]
+    d = cliente.post("/api/track", json={"points": puntos, "closed": True}).json()
+    assert np.allclose(d["speed"], 15, rtol=0.02)
+    # curva horizontal: a = v^2 / R hacia el centro, G = sqrt((225/20)^2 + 9.8^2) / 9.8
+    assert np.allclose(d["g"], math.hypot(225 / 20, 9.8) / 9.8, rtol=0.03)
+
+
 def test_dominio():
     r = formula("sqrt(t-4)", "t", "0", 0, 2)
     assert r.status_code == 400 and "dominio" in r.json()["detail"]

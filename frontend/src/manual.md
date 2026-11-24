@@ -20,6 +20,7 @@ Los cálculos los hace **Python** (con NumPy y SymPy). La parte visual está hec
 | Producto cruz | Para calcular $\kappa$ |
 | Producto punto | Ángulo entre $\mathbf v$ y $\mathbf a$ |
 | Rectas paramétricas y simétricas | Recta tangente en el punto del carrito |
+| Aceleración y norma de un vector | Fuerza G que siente el pasajero (medidor de arriba y color de la pista) |
 
 ## 1. La pista es una función vectorial
 
@@ -28,7 +29,7 @@ Hay dos formas de hacer la pista:
 - **Escribir r(t):** se ponen $x(t)$, $y(t)$, $z(t)$ y el intervalo de $t$. Ya vienen cargados varios ejercicios del taller.
 - **Dibujarla:** se ponen puntos con el mouse y el programa los une con curvas suaves. Entre cada par de puntos usa un polinomio de grado 3 para $x(t)$, $y(t)$ y $z(t)$; así la curva se puede derivar y no tiene picos.
 
-El carrito se mueve con el parámetro $t$, como si $t$ fuera el tiempo.
+El carrito se mueve con el parámetro $t$, que es el **tiempo en segundos**. En las pistas dibujadas, el carrito va a 15 m/s (54 km/h). Para lograrlo, el programa pasa $t$ de "metros" a "segundos" con la **regla de la cadena**: si $t_{seg} = t / 15$, entonces $\mathbf r'$ se multiplica por 15 y $\mathbf r''$ por $15^2$. La forma de la curva y la curvatura no cambian.
 
 ## 2. Velocidad, aceleración y rapidez
 
@@ -98,7 +99,41 @@ $$\cos\theta = \frac{\mathbf v \cdot \mathbf a}{|\mathbf v|\,|\mathbf a|}$$
 - Si $\theta > 90°$, va frenando.
 - Si $\theta = 90°$, $\mathbf v$ y $\mathbf a$ son **ortogonales** ($\mathbf v \cdot \mathbf a = 0$) y la rapidez no cambia. Esto pasa en las hélices de los ejercicios 13 y 20.
 
-## 7. Recta tangente (rectas paramétricas y simétricas)
+## 7. Fuerza G: cuánta fuerza siente el pasajero
+
+La **fuerza G** dice cuántas veces su propio peso siente el pasajero.
+
+$$G = \frac{|\mathbf a - \mathbf g|}{9.8}, \qquad \mathbf g = \langle 0,\ 0,\ -9.8 \rangle$$
+
+- $\mathbf a = \mathbf r''(t)$ es la aceleración del carrito (la flecha naranja).
+- $\mathbf g$ es la gravedad, que apunta hacia abajo con $9.8\ \text{m/s}^2$.
+- Restar $\mathbf g$ es lo mismo que sumarle $9.8$ a la componente $z$ de la aceleración. Luego se saca la **norma** (el largo del vector) y se divide entre $9.8$.
+
+**Cómo leerla:**
+
+| G | Qué siente el pasajero |
+|---|---|
+| 1 G | Su peso normal, como sentado en una silla. Pasa en una recta a velocidad constante, donde $\mathbf a = \mathbf 0$ |
+| Más de 1 G | Lo aplastan contra el asiento. Pasa en el fondo de un valle o en una curva cerrada |
+| Menos de 1 G | Se siente liviano, "flotando". Pasa en la cima de una colina |
+
+**Mientras más G, más fuerza recibe el pasajero.** La aceleración en una curva crece con la rapidez y con la curvatura ($|\mathbf a| \approx \kappa \cdot \text{rapidez}^2$). Por eso una curva cerrada a alta velocidad da muchas G.
+
+En el programa:
+
+- El número grande de arriba a la derecha es la G en ese instante: verde si es menor a 2 (suave), amarillo de 2 a 4 (fuerte), rojo de 4 en adelante (extrema).
+- La pista se puede pintar por fuerza G: verde = 1 G y rojo = 4 G o más.
+- En la gráfica de abajo, la línea naranja es la G durante todo el recorrido. Abajo también sale la "G máx".
+
+**Ejemplo, ejercicio 12:** un punto da vueltas en $x^2 + y^2 = 25$ con velocidad angular 6.
+
+$$|\mathbf a| = 5 \cdot 6^2 = 180\ \text{m/s}^2 \text{ (horizontal, hacia el centro)}$$
+
+$$G = \frac{|\langle a_x,\ a_y,\ 0 + 9.8\rangle|}{9.8} = \frac{\sqrt{180^2 + 9.8^2}}{9.8} \approx 18.4\ G$$
+
+Eso sería muchísimo para una persona: las montañas rusas reales casi nunca pasan de 4 o 5 G.
+
+## 8. Recta tangente (rectas paramétricas y simétricas)
 
 En cada punto se arma la recta que pasa por $\mathbf r(t) = (x_0, y_0, z_0)$ con dirección $\mathbf r'(t) = \langle a, b, c\rangle$, como en los ejercicios 5 al 8 de rectas:
 
@@ -110,7 +145,10 @@ Si alguna componente es 0, esa coordenada queda fija (por ejemplo $x = x_0$), po
 
 ## Cómo se usa
 
-- **Dibujar:** clic en el suelo para poner puntos. Clic en un punto para moverlo con las flechas (la azul es la altura). Supr lo borra.
+- **Dibujar:** arriba hay tres modos que dicen qué hace un clic:
+  - **Mirar** (tecla V): los clics no hacen nada, solo se gira la cámara.
+  - **Agregar** (tecla A): clic en el suelo para poner un punto nuevo.
+  - **Mover** (tecla M): clic en un punto para seleccionarlo y arrastrarlo; clic en el vacío para no seleccionar nada. La altura se cambia con el slider o con la flecha azul. Supr borra el punto seleccionado.
 - **Escribir r(t):** escoger un ejercicio o escribir uno propio, y luego "Calcular".
 - **Ir a t =:** pone el carrito en ese valor de $t$ (acepta pi, pi/4, ln(2), etc.).
 - **Barra espaciadora:** pausa. También se puede arrastrar sobre la gráfica de abajo para mover el carrito.

@@ -6,6 +6,9 @@ es lo que necesitamos para la velocidad r'(t) y la aceleracion r''(t).
 """
 import numpy as np
 
+# El carrito de una pista dibujada va a 15 m/s (54 km/h). Asi t queda en segundos.
+VELOCIDAD = 15.0
+
 
 def cubic_spline(points, closed, samples):
     P = np.asarray(points, dtype=float)
@@ -52,4 +55,8 @@ def cubic_spline(points, closed, samples):
     r = u * Y[k] + w * Y[k + 1] + ((u**3 - u) * M[k] + (w**3 - w) * M[k + 1]) * hk**2 / 6
     r1 = (Y[k + 1] - Y[k]) / hk - (3 * u**2 - 1) / 6 * hk * M[k] + (3 * w**2 - 1) / 6 * hk * M[k + 1]
     r2 = u * M[k] + w * M[k + 1]
-    return t, r, r1, r2
+
+    # Hasta aqui t es "metros" (distancia entre puntos). Lo pasamos a segundos:
+    # t_seg = t / V. Por regla de la cadena: r' se multiplica por V y r'' por V^2.
+    # La forma de la curva (y la curvatura) no cambia, solo la rapidez.
+    return t / VELOCIDAD, r, r1 * VELOCIDAD, r2 * VELOCIDAD**2

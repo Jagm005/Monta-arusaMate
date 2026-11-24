@@ -84,6 +84,7 @@ export class Ride {
       up: [up.x, up.y, up.z],
       kappa: valueAt(d.kappa, idx),
       speed: valueAt(d.speed, idx),
+      g: valueAt(d.g, idx),
       angle: d.angle[Math.round(idx)],
     };
   }
