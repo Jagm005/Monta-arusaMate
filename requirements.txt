@@ -1,0 +1,4 @@
+# Librerias que Vercel instala para la funcion de Python (api/index.py)
+fastapi>=0.110
+numpy>=1.26
+sympy>=1.12

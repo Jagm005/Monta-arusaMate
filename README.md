@@ -31,6 +31,39 @@ npm run dev
 
 Luego se abre http://localhost:5173
 
+## Publicarlo en Vercel
+
+Todo va en **un solo proyecto de Vercel**:
+
+- El frontend se compila y queda como página estática.
+- El backend corre como función de Python en `/api`.
+- Como están en el mismo dominio, no hay que cambiar ninguna URL del código.
+
+Los archivos que lo hacen posible:
+
+- `vercel.json`: cómo compilar el frontend (`frontend/dist`) y que todo lo que empiece con `/api/...` vaya a la función de Python.
+- `api/index.py`: la función de Python. Solo importa la app de FastAPI de `backend/app/main.py`.
+- `requirements.txt` (en la raíz): las librerías de la función (fastapi, numpy, sympy).
+
+Pasos:
+
+1. Subir el proyecto a un repositorio de GitHub (sin `node_modules` ni `dist`; el `.gitignore` ya los excluye).
+2. En vercel.com: **Add New → Project → Import** el repositorio.
+3. Dejar **Root Directory** en la raíz del repo y **Framework Preset** en "Other". El resto lo toma de `vercel.json`.
+4. **Deploy**. Cada vez que se haga push a GitHub, Vercel vuelve a publicar.
+
+También se puede hacer desde la terminal, en la raíz del proyecto:
+
+```powershell
+npx vercel
+npx vercel --prod
+```
+
+Notas:
+
+- La primera vez que alguien usa la página después de un rato, Python tarda unos segundos en "despertar" (cargar NumPy y SymPy). Después responde rápido.
+- Las librerías pesan unos 135 MB, por debajo del límite de 250 MB de las funciones de Vercel.
+
 ## Pruebas
 
 En `backend`:
